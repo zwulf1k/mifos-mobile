@@ -181,8 +181,15 @@ private fun FlowScreen(flow: Route.Flow, onBack: () -> Unit) {
                     // Card CTA «Оформить заявку» completed → advance to the matching FORM.
                     stage == FlowStage.CARD && result is ArciFlowResult.Completed ->
                         stage = FlowStage.FORM
-                    // Form finished, or any non-completion terminal (declined/failed/cancelled) →
-                    // back to the router.
+                    // Form completed → whole flow done, back to router.
+                    result is ArciFlowResult.Completed -> onBack()
+                    // Failed no longer arrives on its own: since SDK 0.0.8-dev the fatal_error
+                    // holds a STABLE ArciErrorScreen in-flow and only forwards Failed when the user
+                    // taps «Назад». So a Failed here is a deliberate user dismissal → step back one
+                    // level (FORM→CARD, else out to the router). NEVER auto-bounce mid-flow.
+                    result is ArciFlowResult.Failed ->
+                        if (stage == FlowStage.FORM) stage = FlowStage.CARD else onBack()
+                    // Cancelled / business-stop terminal → leave the flow.
                     else -> onBack()
                 }
             },
