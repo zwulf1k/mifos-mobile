@@ -110,6 +110,7 @@ dependencies {
     implementation(projects.core.model)
     implementation(projects.core.data)
     implementation(projects.core.datastore)
+    implementation(projects.core.common)
 
     implementation(projects.coreBase.platform)
 
@@ -140,6 +141,11 @@ dependencies {
     implementation(libs.filekit.core)
     implementation(libs.filekit.compose)
     implementation(libs.filekit.dialog.compose)
+
+    // Arci SDK — generic IR renderer embedded via ArciFlow (Android Compose)
+    implementation("io.arci:arci-android-sdk:0.0.6-dev")
+    implementation("io.arci:arci-mobile-ir-runtime:0.0.6-dev")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0") // ArciHostConfiguration.httpClientProvider
 
     testImplementation(kotlin("test"))
     testImplementation(libs.koin.test)
