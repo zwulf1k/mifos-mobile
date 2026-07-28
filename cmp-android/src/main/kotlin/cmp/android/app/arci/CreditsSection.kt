@@ -9,6 +9,7 @@
  */
 package cmp.android.app.arci
 
+import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -36,88 +37,103 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.arci.sdk.flow.ArciFlow
-import io.arci.sdk.launch.ArciFlowResult
-import io.arci.sdk.launch.ArciLaunchRequest
-import io.arci.sdk.launch.ArciTarget
+import io.arci.sdk.ArciSdk
+import io.arci.sdk.launch.ArciProcess
+import io.arci.sdk.launch.ArciProcessLauncher
+import io.arci.sdk.launch.ArciProcessResult
+import io.arci.sdk.launch.ArciStringProvider
 
 private val PrimaryGreen = Color(0xFF2F9E3F)
 private val PageBg = Color(0xFFF4F7F4)
 private val Ink = Color(0xFF0F1A14)
 private val Muted = Color(0xFF5C6B60)
 
-// Credit application in its three ARCI presentation visuals. Each visual is a two-step chain on
-// :9900 (appId=credit_lead_intake): a CONDITION CARD first, then — when the card CTA drives the
-// flow to __completed__ (ArciFlowResult.Completed) — the matching lead FORM.
-private enum class CreditVisual(
-    val label: String,
-    val conditionsInteractionId: String,
-    val formInteractionId: String,
-) {
-    CLASSIC("Классика", "interaction.clin.credit_lead_conditions", "interaction.clin.credit_lead"),
-    NARRATIVE("Нарратив", "interaction.clin.credit_lead_conditions_modern", "credit_lead_modern"),
-    CHAT("Чат", "interaction.clin.credit_lead_conditions_chat", "credit_lead_chat"),
-}
+/** i18n key prefix for the credit-visual picker family — splits registry.processes() by product. */
+private const val CREDIT_LABEL_PREFIX = "ui.launch.credit."
+
+/**
+ * [ArciStringProvider] over Android string resources: resolves a `ui.launch.*` labelKey to the
+ * matching `ui_launch_*` resource (dots→underscores; Android resource ids can't contain dots). Locale
+ * is ignored — resource resolution already follows the app's configuration/locale.
+ */
+fun mifosLaunchStringProvider(context: Context): ArciStringProvider =
+    ArciStringProvider { labelKey, _ ->
+        val resName = labelKey.replace('.', '_')
+        val id = context.resources.getIdentifier(resName, "string", context.packageName)
+        if (id == 0) null else context.getString(id)
+    }
 
 private sealed interface Route {
-    data object Router : Route // 3a: credit vs mortgage (two apps / two BFFs)
+    data object Router : Route // credit vs mortgage entry point
     data object CreditVisuals : Route // credit → pick a visual (classic / narrative / chat)
-
-    // Card→form chain: renders [conditionsInteractionId] first, then [formInteractionId] once the
-    // card completes. Cross-interaction routing is a host concern until an ArciProcessRegistry lands.
-    data class Flow(
-        val appId: String,
-        val conditionsInteractionId: String,
-        val formInteractionId: String,
-        val title: String,
-    ) : Route
+    data class Launch(val process: ArciProcess, val title: String) : Route
 }
 
 /**
- * "Loan Ipoteka" host entry. Level 1 (mockup 3a): current credits + credit vs mortgage — two
- * different ARCI apps on two BFFs (endpointResolver maps appId→port). Level 2 for credit: pick a
- * visual (Классика/Нарратив/Чат) = three ARCI presentations of the same lead. Cross-app AND
- * cross-interaction routing are host concerns until an ArciProcessRegistry lands in the SDK.
+ * "Loan Ipoteka" host entry (Arci.Mobile#43): a THIN GENERIC launcher over the SDK's
+ * [io.arci.sdk.launch.ArciProcessRegistry]. The host holds NO interactionId or card/form routing —
+ * every entry (credit visual, mortgage) and its step chain come from the registry
+ * ([ArciSdk.configuration]`.processRegistry`, config/server-driven), opened via [ArciProcessLauncher].
+ * Native "Кредиты"/"Текущие заявки" chrome stays minimal (becomes the ARCI vitrina later, epic #29).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreditsSectionRoot(onExit: () -> Unit) {
+    val registry = ArciSdk.configuration?.processRegistry
+    val strings = ArciSdk.configuration?.stringProvider
+    val context = LocalContext.current
     var route by remember { mutableStateOf<Route>(Route.Router) }
+
+    fun label(process: ArciProcess): String =
+        strings?.string(process.labelKey, locale = null) ?: process.labelKey
+
     Surface(modifier = Modifier.fillMaxSize(), color = PageBg) {
+        if (registry == null) {
+            // No registry wired — nothing to render. Keeps the host generic: it never falls back
+            // to hardcoded entries.
+            return@Surface
+        }
+        val processes = registry.processes()
+        val creditVisuals = processes.filter { it.labelKey.startsWith(CREDIT_LABEL_PREFIX) }
+        val mortgage = processes.firstOrNull { !it.labelKey.startsWith(CREDIT_LABEL_PREFIX) }
+
         when (val r = route) {
             is Route.Router -> RouterScreen(
+                hasCredit = creditVisuals.isNotEmpty(),
+                mortgageLabel = mortgage?.let(::label),
                 onCredit = { route = Route.CreditVisuals },
                 onMortgage = {
-                    route = Route.Flow(
-                        appId = "mortgage",
-                        conditionsInteractionId = "interaction.mtg.mortgage_conditions",
-                        formInteractionId = "interaction.mtg.mortgage_apply",
-                        title = "Заявка на ипотеку",
-                    )
+                    mortgage?.let { route = Route.Launch(it, label(it)) }
                 },
                 onBack = onExit,
             )
             is Route.CreditVisuals -> CreditVisualsScreen(
-                onPick = { v ->
-                    route = Route.Flow(
-                        appId = "credit_lead_intake",
-                        conditionsInteractionId = v.conditionsInteractionId,
-                        formInteractionId = v.formInteractionId,
-                        title = "Оформление · ${v.label}",
-                    )
-                },
+                processes = creditVisuals,
+                labelOf = ::label,
+                onPick = { p -> route = Route.Launch(p, label(p)) },
                 onBack = { route = Route.Router },
             )
-            is Route.Flow -> FlowScreen(r) { route = Route.Router }
+            is Route.Launch -> LaunchScreen(
+                process = r.process,
+                title = r.title,
+                onBack = { route = Route.Router },
+            )
         }
     }
 }
 
 @Composable
-private fun RouterScreen(onCredit: () -> Unit, onMortgage: () -> Unit, onBack: () -> Unit) {
+private fun RouterScreen(
+    hasCredit: Boolean,
+    mortgageLabel: String?,
+    onCredit: () -> Unit,
+    onMortgage: () -> Unit,
+    onBack: () -> Unit,
+) {
     BackHandler(onBack = onBack)
     Column(Modifier.fillMaxSize()) {
         GreenBar("Кредиты", onBack)
@@ -128,14 +144,19 @@ private fun RouterScreen(onCredit: () -> Unit, onMortgage: () -> Unit, onBack: (
             Text("Текущие заявки", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Text("Пока нет активных заявок", color = Muted, fontSize = 14.sp)
             Text("Оформить новую", color = Muted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            FilledBtn("Заявка на любой кредит", onCredit)
-            OutlineBtn("Заявка на ипотеку", onMortgage)
+            if (hasCredit) FilledBtn("Заявка на любой кредит", onCredit)
+            if (mortgageLabel != null) OutlineBtn(mortgageLabel, onMortgage)
         }
     }
 }
 
 @Composable
-private fun CreditVisualsScreen(onPick: (CreditVisual) -> Unit, onBack: () -> Unit) {
+private fun CreditVisualsScreen(
+    processes: List<ArciProcess>,
+    labelOf: (ArciProcess) -> String,
+    onPick: (ArciProcess) -> Unit,
+    onBack: () -> Unit,
+) {
     BackHandler(onBack = onBack)
     Column(Modifier.fillMaxSize()) {
         GreenBar("Заявка на кредит", onBack)
@@ -144,53 +165,38 @@ private fun CreditVisualsScreen(onPick: (CreditVisual) -> Unit, onBack: () -> Un
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text("Выберите вид заявки", color = Ink, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            CreditVisual.entries.forEachIndexed { i, v ->
-                if (i == 0) FilledBtn(v.label) { onPick(v) } else OutlineBtn(v.label) { onPick(v) }
+            processes.forEachIndexed { i, p ->
+                val text = labelOf(p)
+                if (i == 0) FilledBtn(text) { onPick(p) } else OutlineBtn(text) { onPick(p) }
             }
         }
     }
 }
 
-// Two-stage chain within a single visual: CARD → FORM.
-private enum class FlowStage { CARD, FORM }
-
+/**
+ * Opens [process] via [ArciProcessLauncher] — the SDK drives the whole steps chain (card→form or a
+ * single self-contained step) with no host-side stage machine.
+ */
 @Composable
-private fun FlowScreen(flow: Route.Flow, onBack: () -> Unit) {
-    var stage by remember(flow) { mutableStateOf(FlowStage.CARD) }
-    val interactionId = when (stage) {
-        FlowStage.CARD -> flow.conditionsInteractionId
-        FlowStage.FORM -> flow.formInteractionId
-    }
+private fun LaunchScreen(process: ArciProcess, title: String, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        GreenBar(flow.title, onBack)
-        ArciFlow(
-            // Key the surface by stage so the card→form transition tears down the card session and
-            // starts a fresh flow for the form interaction.
-            request = ArciLaunchRequest(
-                target = ArciTarget(appId = flow.appId, interactionId = interactionId),
-                context = mapOf("fullName" to "Рахимова Дилноза Азизовна", "monthlyIncome" to "9400000"),
-                // Host's current app language (set via Settings > Language, applied through
-                // AppCompatDelegate.setApplicationLocales + Locale.setDefault in MainActivity) —
-                // forward it so ARCI serves the flow's copy in the user's chosen locale instead
-                // of falling back to the BFF/SDK default.
-                locale = java.util.Locale.getDefault().language,
-            ),
+        GreenBar(title, onBack)
+        ArciProcessLauncher(
+            process = process,
             modifier = Modifier.fillMaxSize(),
+            context = mapOf("fullName" to "Рахимова Дилноза Азизовна", "monthlyIncome" to "9400000"),
+            // Host's PROFILE language (Settings > Language → LanguageConfig, persisted per-app via
+            // AppCompatDelegate). Read AppCompatDelegate directly so a fresh cold start after a
+            // locale change still serves the right ARCI language (see prior FlowScreen note).
+            locale = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales()
+                .takeIf { !it.isEmpty }
+                ?.get(0)
+                ?.language
+                ?: java.util.Locale.getDefault().language,
             onResult = { result ->
-                when {
-                    // Card CTA «Оформить заявку» completed → advance to the matching FORM.
-                    stage == FlowStage.CARD && result is ArciFlowResult.Completed ->
-                        stage = FlowStage.FORM
-                    // Form completed → whole flow done, back to router.
-                    result is ArciFlowResult.Completed -> onBack()
-                    // Failed no longer arrives on its own: since SDK 0.0.8-dev the fatal_error
-                    // holds a STABLE ArciErrorScreen in-flow and only forwards Failed when the user
-                    // taps «Назад». So a Failed here is a deliberate user dismissal → step back one
-                    // level (FORM→CARD, else out to the router). NEVER auto-bounce mid-flow.
-                    result is ArciFlowResult.Failed ->
-                        if (stage == FlowStage.FORM) stage = FlowStage.CARD else onBack()
-                    // Cancelled / business-stop terminal → leave the flow.
-                    else -> onBack()
+                when (result) {
+                    is ArciProcessResult.Completed -> onBack()
+                    is ArciProcessResult.Stopped -> onBack()
                 }
             },
         )

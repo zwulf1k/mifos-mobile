@@ -656,4 +656,10 @@
     <string name="no_transaction_found">No Transaction Found</string>
     <string name="not_connected">⚠️ You aren’t connected to the internet</string>
     <string name="google_maps_key" templateMergeStrategy="preserve" translatable="false">AIzaSyBbeT2BaMWLj-lReCgYoNmXs_TIyRLr9qQ</string>
+
+    <!-- ARCI launch registry labels (ui.launch.* labelKeys, resolved via ArciStringProvider) -->
+    <string name="ui_launch_credit_classic">Classic</string>
+    <string name="ui_launch_credit_narrative">Narrative</string>
+    <string name="ui_launch_credit_chat">Chat</string>
+    <string name="ui_launch_mortgage">Mortgage application</string>
 </resources>

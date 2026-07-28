@@ -430,4 +430,10 @@
     <string name="enter_tenant">Перейти к Арендатору</string>
     <string name="app_info">Информация о приложении</string>
     <string name="login_failed">Войти не удалось, пожалуйста, повторите попытку позже.</string>
+
+    <!-- ARCI launch registry labels (ui.launch.* labelKeys, resolved via ArciStringProvider) -->
+    <string name="ui_launch_credit_classic">Классика</string>
+    <string name="ui_launch_credit_narrative">Нарратив</string>
+    <string name="ui_launch_credit_chat">Чат</string>
+    <string name="ui_launch_mortgage">Заявка на ипотеку</string>
 </resources>

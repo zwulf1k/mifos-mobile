@@ -1,0 +1,33 @@
+# ARCI launch registry — config-as-code SEED for the launch-descriptor parameter store.
+#
+# Lifecycle: this file is the RELEASE SEED. On deploy it seeds/migrates the DB parameter store; the
+# DB is the live source of truth, edited by the СУП / parameter-management center (UI.Admin
+# storefront-admin, epic #30). The BFF serves the DB as a read-model; the SDK's
+# ServerArciProcessRegistry consumes it. Adding or changing a process/deeplink is a СУП (DB) edit —
+# NO app release. This bundled copy bootstraps first paint until the server read-model loads.
+#
+# Shape = ArciProcess{ key, labelKey (i18n key, NEVER a literal), appId, steps[] (ordered
+# interactionIds chained by ArciProcessLauncher), presentationHint? }.
+# A single-step process opens DIRECTLY (self-contained funnel, no condition card); a two-step process
+# is the classic card → form chain.
+launch_registry:
+  - key: credit_classic
+    labelKey: ui.launch.credit.classic
+    appId: credit_lead_intake
+    steps: [interaction.clin.credit_lead_conditions, interaction.clin.credit_lead]
+    presentationHint: CLASSIC
+  - key: credit_narrative
+    labelKey: ui.launch.credit.narrative
+    appId: credit_lead_intake
+    steps: [credit_lead_modern]        # single step — self-contained narrative funnel, NO card
+    presentationHint: NARRATIVE
+  - key: credit_chat
+    labelKey: ui.launch.credit.chat
+    appId: credit_lead_intake
+    steps: [credit_lead_chat]          # single step — chat funnel, NO card
+    presentationHint: CHAT
+  - key: mortgage
+    labelKey: ui.launch.mortgage
+    appId: mortgage
+    steps: [interaction.mtg.mortgage_conditions, interaction.mtg.mortgage_apply]
+    presentationHint: CLASSIC
