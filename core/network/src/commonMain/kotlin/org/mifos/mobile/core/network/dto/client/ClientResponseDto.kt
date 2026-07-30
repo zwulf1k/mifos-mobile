@@ -53,6 +53,8 @@ data class ClientResponseDto(
 
     val mobileNo: String? = null,
 
+    val pinfl: String? = null,
+
     val clientClassification: ClientClassificationResponseDto? = null,
 
     val clientType: ClientTypeResponseDto? = null,

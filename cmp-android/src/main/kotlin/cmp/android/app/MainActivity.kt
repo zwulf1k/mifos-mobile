@@ -14,9 +14,17 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.core.os.LocaleListCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
+import cmp.android.app.arci.CreditsSectionRoot
 import cmp.shared.SharedApp
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.dialogs.init
@@ -64,8 +72,32 @@ class MainActivity : AppCompatActivity() {
          * Set the content view of the activity.
          * @see setContent
          */
+        val arciProcessKeyOnLaunch =
+            intent.getStringExtra("arciProcessKey").takeIf { BuildConfig.DEBUG }
+        val openArciCreditOnLaunch =
+            BuildConfig.DEBUG &&
+                (
+                    intent.getBooleanExtra("openArciCredit", false) ||
+                        arciProcessKeyOnLaunch != null
+                    )
+        cmp.android.app.arci.MifosMyIdTestControl.configure(
+            intent.getStringExtra("arciMyIdOutcome").takeIf { BuildConfig.DEBUG },
+            intent.getStringExtra("arciProfilePinfl").takeIf { BuildConfig.DEBUG },
+        )
+        if (BuildConfig.DEBUG) {
+            android.util.Log.i(
+                "MifosArciEntry",
+                "open=$openArciCreditOnLaunch processKey=$arciProcessKeyOnLaunch",
+            )
+        }
+
         setContent {
+            var showArciCredit by remember {
+                mutableStateOf(openArciCreditOnLaunch)
+            }
+
             SharedApp(
+                modifier = Modifier.semantics { testTagsAsResourceId = true },
                 handleThemeMode = {
                     AppCompatDelegate.setDefaultNightMode(it)
                 },
@@ -83,11 +115,8 @@ class MainActivity : AppCompatActivity() {
                         AppCompatDelegate.setApplicationLocales(newLocales)
                         // Update Locale.setDefault for non-UI formatting
                         if (localeTag != null) {
-                            // Use forLanguageTag to properly parse locales like "en-GB", "pt-BR"
                             Locale.setDefault(Locale.forLanguageTag(localeTag))
                         } else {
-                            // Reset to true system default locale from device configuration
-                            // Use Resources.getSystem() to get device locale unaffected by app overrides
                             val systemLocale = Resources.getSystem().configuration.locales[0]
                             Locale.setDefault(systemLocale)
                         }
@@ -96,7 +125,22 @@ class MainActivity : AppCompatActivity() {
                 onSplashScreenRemoved = {
                     shouldShowSplashScreen = false
                 },
+                // Mounted by ComposeApp inside MifosMobileTheme, not as a sibling of it.
+                // Therefore embedded ARCI inherits the active host theme exactly.
+                overlay = {
+                    if (showArciCredit) {
+                        CreditsSectionRoot(
+                            initialProcessKey = arciProcessKeyOnLaunch,
+                            onExit = { showArciCredit = false },
+                        )
+                    }
+                },
             )
+
+            // The "Loan Ipoteka" home service tile launches the Arci flow via the shared bridge.
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                org.mifos.mobile.core.common.ArciEntryBridge.open = { showArciCredit = true }
+            }
         }
     }
 }

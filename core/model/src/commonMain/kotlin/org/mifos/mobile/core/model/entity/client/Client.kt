@@ -57,6 +57,8 @@ data class Client(
 
     val mobileNo: String? = null,
 
+    val pinfl: String? = null,
+
     val clientClassification: ClientClassification? = null,
 
     val clientType: ClientType? = null,

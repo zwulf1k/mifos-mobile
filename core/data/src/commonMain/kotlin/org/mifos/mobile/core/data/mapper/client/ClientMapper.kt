@@ -46,6 +46,7 @@ fun ClientResponseDto.toModel(): Client =
         isImagePresent = isImagePresent,
         externalId = externalId,
         mobileNo = mobileNo,
+        pinfl = pinfl,
         clientClassification = clientClassification?.toModel(),
         clientType = clientType?.toModel(),
         gender = gender?.toModel(),
