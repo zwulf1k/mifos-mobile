@@ -273,8 +273,8 @@ dev.gitlive:firebase-common-android:2.1.0
 dev.gitlive:firebase-common:2.1.0
 dev.gitlive:firebase-crashlytics-android:2.1.0
 dev.gitlive:firebase-crashlytics:2.1.0
-io.arci:arci-android-sdk:0.0.9-dev.56.20260730.1
-io.arci:arci-mobile-ir-runtime:0.0.9-dev.56.20260730.1
+io.arci:arci-android-sdk:0.0.9-dev.57.20260731.1
+io.arci:arci-mobile-ir-runtime:0.0.9-dev.57.20260731.1
 io.coil-kt.coil3:coil-android:3.2.0
 io.coil-kt.coil3:coil-compose-android:3.2.0
 io.coil-kt.coil3:coil-compose-core-android:3.2.0
