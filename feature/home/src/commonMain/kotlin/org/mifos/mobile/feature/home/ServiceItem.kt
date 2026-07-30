@@ -20,6 +20,7 @@ import mifos_mobile.feature.home.generated.resources.feature_home_beneficiary
 import mifos_mobile.feature.home.generated.resources.feature_home_charges
 import mifos_mobile.feature.home.generated.resources.feature_home_faq
 import mifos_mobile.feature.home.generated.resources.feature_home_loan_accounts
+import mifos_mobile.feature.home.generated.resources.feature_home_loan_ipoteka
 import mifos_mobile.feature.home.generated.resources.feature_home_pocket
 import mifos_mobile.feature.home.generated.resources.feature_home_saving_accounts
 import mifos_mobile.feature.home.generated.resources.feature_home_share_accounts
@@ -28,11 +29,19 @@ import org.jetbrains.compose.resources.StringResource
 import org.mifos.mobile.core.common.Constants
 import org.mifos.mobile.core.designsystem.icon.MifosIcons
 
+internal const val ROUTE_ARCI_IPOTEKA = "arci_ipoteka"
+
 internal sealed class ServiceItem(
     val title: StringResource,
     val icon: ImageVector,
     val route: String,
 ) {
+    data object LoanIpoteka : ServiceItem(
+        title = Res.string.feature_home_loan_ipoteka,
+        icon = MifosIcons.Home,
+        route = ROUTE_ARCI_IPOTEKA,
+    )
+
     data object SavingsAccount : ServiceItem(
         title = Res.string.feature_home_saving_accounts,
         icon = MifosIcons.SavingsAccount,
@@ -101,6 +110,7 @@ internal sealed class ServiceItem(
 }
 
 internal val serviceCards: ImmutableList<ServiceItem> = persistentListOf(
+    ServiceItem.LoanIpoteka,
     ServiceItem.Pocket,
     ServiceItem.SavingsAccount,
     ServiceItem.LoanAccount,

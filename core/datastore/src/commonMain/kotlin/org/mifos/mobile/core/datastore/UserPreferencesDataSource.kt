@@ -24,12 +24,14 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import okio.ByteString.Companion.encodeUtf8
 import org.mifos.mobile.core.datastore.model.AppSettings
+import org.mifos.mobile.core.datastore.model.CustomerData
 import org.mifos.mobile.core.datastore.model.TimeBasedTheme
 import org.mifos.mobile.core.datastore.model.UserData
 import org.mifos.mobile.core.model.LanguageConfig
 import org.mifos.mobile.core.model.MifosThemeConfig
 
 private const val USER_DATA = "userData"
+private const val CUSTOMER_DATA = "customerData"
 private const val APP_SETTINGS = "appSettings"
 
 @Suppress("TooManyFunctions")
@@ -60,11 +62,24 @@ class UserPreferencesDataSource(
         ),
     )
 
+    private val _customerInfo = MutableStateFlow(
+        settings.decodeValue(
+            key = CUSTOMER_DATA,
+            serializer = CustomerData.serializer(),
+            defaultValue = settings.decodeValueOrNull(
+                key = CUSTOMER_DATA,
+                serializer = CustomerData.serializer(),
+            ) ?: CustomerData.EMPTY,
+        ),
+    )
+
     val token = _userInfo.map {
         it.base64EncodedAuthenticationKey
     }
 
     val userInfo = _userInfo
+
+    val customerInfo = _customerInfo
 
     val settingsInfo = _settingsInfo
 
@@ -99,6 +114,17 @@ class UserPreferencesDataSource(
         withContext(dispatcher) {
             settings.putUserPreference(user)
             _userInfo.value = user
+        }
+    }
+
+    suspend fun updateCustomerInfo(customer: CustomerData) {
+        withContext(dispatcher) {
+            settings.encodeValue(
+                key = CUSTOMER_DATA,
+                serializer = CustomerData.serializer(),
+                value = customer,
+            )
+            _customerInfo.value = customer
         }
     }
 
@@ -162,6 +188,12 @@ class UserPreferencesDataSource(
         withContext(dispatcher) {
             settings.putUserPreference(UserData.DEFAULT)
             _userInfo.value = UserData.DEFAULT
+            settings.encodeValue(
+                key = CUSTOMER_DATA,
+                serializer = CustomerData.serializer(),
+                value = CustomerData.EMPTY,
+            )
+            _customerInfo.value = CustomerData.EMPTY
             val cleared = settings.getSettingsPreference().copy(
                 isAuthenticated = false,
             )

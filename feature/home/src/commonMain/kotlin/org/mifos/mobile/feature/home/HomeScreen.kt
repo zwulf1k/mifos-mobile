@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
@@ -61,6 +62,7 @@ import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.koin.compose.viewmodel.koinViewModel
+import org.mifos.mobile.core.common.ArciEntryBridge
 import org.mifos.mobile.core.common.Constants
 import org.mifos.mobile.core.designsystem.component.MifosElevatedScaffold
 import org.mifos.mobile.core.designsystem.icon.MifosIcons
@@ -107,6 +109,7 @@ internal fun HomeScreen(
                     Constants.BENEFICIARY -> onNavigate(HomeNavigationDestination.Beneficiary)
                     Constants.HELP -> onNavigate(HomeNavigationDestination.Faq)
                     Constants.POCKET -> onNavigate(HomeNavigationDestination.Pocket)
+                    ROUTE_ARCI_IPOTEKA -> ArciEntryBridge.open?.invoke()
                 }
             }
             is HomeEvent.NavigateToNotification -> onNavigate(HomeNavigationDestination.Notification)
@@ -310,6 +313,7 @@ internal fun ServiceBox(
                         ServiceItemCard(
                             title = item.title,
                             icon = item.icon,
+                            automationTag = "service.${item.route}",
                             isSelected = isSelected,
                             isEditMode = isEditMode,
                             onClick = { onServiceClick(item.route) },
@@ -330,11 +334,13 @@ internal fun ServiceItemCard(
     icon: ImageVector,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    automationTag: String? = null,
     isSelected: Boolean = false,
     isEditMode: Boolean = false,
 ) {
     Column(
         modifier = modifier
+            .then(if (automationTag != null) Modifier.testTag(automationTag) else Modifier)
             .padding(vertical = KptTheme.spacing.sm)
             .clippedClickable(
                 onClick = onClick,

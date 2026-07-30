@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import org.mifos.mobile.core.common.DataState
 import org.mifos.mobile.core.datastore.model.AppSettings
+import org.mifos.mobile.core.datastore.model.CustomerData
 import org.mifos.mobile.core.datastore.model.TimeBasedTheme
 import org.mifos.mobile.core.datastore.model.UserData
 import org.mifos.mobile.core.model.LanguageConfig
@@ -32,6 +33,9 @@ class UserPreferencesRepositoryImpl(
 
     override val userInfo: StateFlow<UserData>
         get() = preferenceManager.userInfo
+
+    override val customerInfo: StateFlow<CustomerData>
+        get() = preferenceManager.customerInfo
 
     override val settingsInfo: StateFlow<AppSettings>
         get() = preferenceManager.settingsInfo
@@ -112,6 +116,15 @@ class UserPreferencesRepositoryImpl(
     override suspend fun updateUser(user: UserData): DataState<Unit> {
         return try {
             val result = preferenceManager.updateUserInfo(user)
+            DataState.Success(result)
+        } catch (e: Exception) {
+            DataState.Error(e)
+        }
+    }
+
+    override suspend fun updateCustomer(customer: CustomerData): DataState<Unit> {
+        return try {
+            val result = preferenceManager.updateCustomerInfo(customer)
             DataState.Success(result)
         } catch (e: Exception) {
             DataState.Error(e)

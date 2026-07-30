@@ -12,6 +12,11 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
     repositories {
+        mavenLocal {
+            // Arci SDK (io.arci:*) published to ~/.m2 — scope to io.arci ONLY so it
+            // does not shadow Kotlin/AndroidX artifacts and break KMP metadata compile.
+            content { includeGroup("io.arci") }
+        }
         google()
         mavenCentral()
         maven("https://jitpack.io")

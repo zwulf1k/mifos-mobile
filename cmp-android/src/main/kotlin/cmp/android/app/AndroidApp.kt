@@ -10,18 +10,28 @@
 package cmp.android.app
 
 import android.app.Application
+import cmp.android.app.arci.IpotekaArciLoadingIndicator
+import cmp.android.app.arci.MifosArciHostSessionProvider
+import cmp.android.app.arci.MifosCustomerContextRepository
+import cmp.android.app.arci.MifosMyIdExternalHandoffAdapter
+import cmp.android.app.arci.SharedPreferencesExternalHandoffResultStore
 import cmp.android.app.arci.mifosLaunchStringProvider
 import cmp.shared.utils.initKoin
 import io.arci.sdk.ArciHostConfiguration
+import io.arci.sdk.ArciLoadingIndicator
 import io.arci.sdk.ArciSdk
 import io.arci.sdk.endpoint.ArciEndpoint
 import io.arci.sdk.endpoint.ArciEndpointResolver
+import io.arci.sdk.handoff.ArciExternalHandoffRegistry
 import io.arci.sdk.launch.ArciLaunchRequest
 import io.arci.sdk.launch.YamlArciProcessRegistry
 import okhttp3.OkHttpClient
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
+import org.koin.core.context.GlobalContext
 import org.koin.core.logger.Level
+import org.mifos.mobile.core.data.repository.HomeRepository
+import org.mifos.mobile.core.datastore.UserPreferencesRepository
 
 /**
  * Android application class.
@@ -38,6 +48,7 @@ class AndroidApp : Application() {
             androidContext(this@AndroidApp) // Provides the Android app context
             androidLogger(Level.DEBUG) // Enables Koin's logging for debugging
         }
+        val koin = GlobalContext.get()
 
         // Configure the Arci SDK once. 10.0.2.2:9900 is the ARCI BFF reachable
         // from the Android emulator (cleartext; see usesCleartextTraffic in the manifest).
@@ -45,11 +56,12 @@ class AndroidApp : Application() {
             ArciHostConfiguration(
                 endpointResolver = object : ArciEndpointResolver {
                     // Multi-BFF routing: each ARCI product app has its own backend/port.
-                    // credit_lead_intake → :9900, mortgage → :9901. (Forerunner of a real
+                    // credit_lead_intake → :9900, mortgage → :9901, storefront → :9902.
                     // ArciProcessRegistry / dynamic product resolution.)
                     override suspend fun resolve(request: ArciLaunchRequest): ArciEndpoint {
                         val port = when (request.target.appId) {
                             "mortgage" -> 9901
+                            "credit_storefront" -> 9902
                             else -> 9900
                         }
                         return ArciEndpoint(
@@ -61,6 +73,10 @@ class AndroidApp : Application() {
                 },
                 httpClientProvider = { OkHttpClient() },
                 themeProvider = null,
+                loadingIndicator = ArciLoadingIndicator {
+                    IpotekaArciLoadingIndicator()
+                },
+                showInternalScreenTopBar = false,
                 // Config/server-driven launch registry (Arci.Mobile#43): the host holds NO
                 // interactionId/card-form routing — CreditsSectionRoot renders entries and opens
                 // them purely from this registry. Bundled launch-registry.yaml is the release
@@ -68,6 +84,26 @@ class AndroidApp : Application() {
                 // server source is a follow-up once the СУП read-model endpoint exists.
                 processRegistry = YamlArciProcessRegistry.fromAsset(this@AndroidApp),
                 stringProvider = mifosLaunchStringProvider(this@AndroidApp),
+                logger = { message ->
+                    if (BuildConfig.DEBUG) {
+                        android.util.Log.i("ArciSdk", message)
+                    }
+                },
+                sessionProvider = koin.get<UserPreferencesRepository>().let { preferences ->
+                    MifosArciHostSessionProvider(
+                        preferences = preferences,
+                        customerContexts = MifosCustomerContextRepository(
+                            preferences = preferences,
+                            homeRepository = koin.get<HomeRepository>(),
+                        ),
+                    )
+                },
+                externalHandoffRegistry = ArciExternalHandoffRegistry(
+                    mapOf("MYID" to MifosMyIdExternalHandoffAdapter()),
+                ),
+                externalHandoffResultStore = SharedPreferencesExternalHandoffResultStore(
+                    getSharedPreferences("arci_external_handoff", MODE_PRIVATE),
+                ),
             ),
         )
     }

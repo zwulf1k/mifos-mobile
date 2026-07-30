@@ -14,9 +14,6 @@ import io.arci.sdk.session.ArciClientProfileSource
 import io.arci.sdk.session.ArciHostSession
 import io.arci.sdk.session.ArciHostSessionProvider
 import io.arci.sdk.session.ArciHostSessionUnavailableException
-import kotlinx.coroutines.flow.first
-import org.mifos.mobile.core.common.DataState
-import org.mifos.mobile.core.data.repository.HomeRepository
 import org.mifos.mobile.core.datastore.UserPreferencesRepository
 
 /**
@@ -27,7 +24,7 @@ import org.mifos.mobile.core.datastore.UserPreferencesRepository
  */
 class MifosArciHostSessionProvider(
     private val preferences: UserPreferencesRepository,
-    private val homeRepository: HomeRepository,
+    private val customerContexts: MifosCustomerContextRepository,
 ) : ArciHostSessionProvider {
 
     override suspend fun currentSession(): ArciHostSession {
@@ -37,31 +34,20 @@ class MifosArciHostSessionProvider(
             throw ArciHostSessionUnavailableException("Mifos client session is not authenticated")
         }
 
-        val clientState = homeRepository.currentClient(clientId).first { it !is DataState.Loading }
-        val client = when (clientState) {
-            is DataState.Success -> clientState.data
-            is DataState.Error -> throw ArciHostSessionUnavailableException(
-                "Mifos client profile is unavailable",
-                clientState.exception,
-            )
-            DataState.Loading -> error("Loading state was filtered")
-        }
+        val customer = customerContexts.current(clientId)
 
         return ArciHostSession(
             subjectId = user.userId.toString(),
             profile = ArciClientProfile(
-                partyId = client.id.toString(),
-                firstName = client.firstname.orEmpty(),
-                middleName = client.middlename,
-                lastName = client.lastname.orEmpty(),
-                phone = client.mobileNo,
-                pinfl = client.pinfl ?: MifosMyIdTestControl.profilePinfl(),
-                birthDateIso = client.dobDate.toIsoDateOrNull(),
+                partyId = customer.clientId.toString(),
+                firstName = customer.firstName,
+                middleName = customer.middleName,
+                lastName = customer.lastName,
+                phone = customer.phone,
+                pinfl = customer.pinfl ?: MifosMyIdTestControl.profilePinfl(),
+                birthDateIso = customer.birthDateIso,
                 source = ArciClientProfileSource.HOST_CORE_BANKING,
             ),
         )
     }
 }
-
-private fun List<Int>.toIsoDateOrNull(): String? =
-    takeIf { it.size >= 3 }?.let { date -> "%04d-%02d-%02d".format(date[0], date[1], date[2]) }

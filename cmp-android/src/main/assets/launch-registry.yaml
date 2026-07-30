@@ -11,6 +11,11 @@
 # A single-step process opens DIRECTLY (self-contained funnel, no condition card); a two-step process
 # is the classic card → form chain.
 launch_registry:
+  - key: credit_storefront
+    labelKey: ui.launch.storefront
+    appId: credit_storefront
+    steps: [credit_storefront_vitrina]
+    presentationHint: CLASSIC
   - key: credit_classic
     labelKey: ui.launch.credit.classic
     appId: credit_lead_intake
@@ -19,15 +24,15 @@ launch_registry:
   - key: credit_narrative
     labelKey: ui.launch.credit.narrative
     appId: credit_lead_intake
-    steps: [credit_lead_modern]        # single step — self-contained narrative funnel, NO card
+    steps: [credit_lead_conditions_modern, credit_lead_modern]
     presentationHint: NARRATIVE
   - key: credit_chat
     labelKey: ui.launch.credit.chat
     appId: credit_lead_intake
-    steps: [credit_lead_chat]          # single step — chat funnel, NO card
+    steps: [credit_lead_conditions_chat, credit_lead_chat]
     presentationHint: CHAT
   - key: mortgage
     labelKey: ui.launch.mortgage
     appId: mortgage
-    steps: [interaction.mtg.mortgage_conditions, interaction.mtg.mortgage_apply]
+    steps: [interaction.mtg.mortgage_apply]
     presentationHint: CLASSIC

@@ -24,6 +24,7 @@ import mifos_mobile.feature.home.generated.resources.feature_server_error
 import org.jetbrains.compose.resources.StringResource
 import org.mifos.mobile.core.common.CurrencyFormatter
 import org.mifos.mobile.core.common.DataState
+import org.mifos.mobile.core.data.mapper.client.toCustomerData
 import org.mifos.mobile.core.data.repository.HomeRepository
 import org.mifos.mobile.core.data.util.NetworkMonitor
 import org.mifos.mobile.core.datastore.UserPreferencesRepository
@@ -370,6 +371,9 @@ internal class HomeViewModel(
             DataState.Loading -> updateState { it.copy(uiState = HomeScreenState.Loading) }
 
             is DataState.Success -> {
+                viewModelScope.launch {
+                    userPreferencesRepositoryImpl.updateCustomer(dataState.data.toCustomerData())
+                }
                 updateState {
                     it.copy(
                         firstName = dataState.data.firstname,

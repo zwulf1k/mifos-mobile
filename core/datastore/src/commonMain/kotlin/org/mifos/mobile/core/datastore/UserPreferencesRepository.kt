@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import org.mifos.mobile.core.common.DataState
 import org.mifos.mobile.core.datastore.model.AppSettings
+import org.mifos.mobile.core.datastore.model.CustomerData
 import org.mifos.mobile.core.datastore.model.TimeBasedTheme
 import org.mifos.mobile.core.datastore.model.UserData
 import org.mifos.mobile.core.model.LanguageConfig
@@ -20,6 +21,8 @@ import org.mifos.mobile.core.model.MifosThemeConfig
 
 interface UserPreferencesRepository {
     val userInfo: StateFlow<UserData>
+
+    val customerInfo: StateFlow<CustomerData>
 
     val settingsInfo: StateFlow<AppSettings>
 
@@ -52,6 +55,8 @@ interface UserPreferencesRepository {
     suspend fun updateTimeBasedTheme(theme: TimeBasedTheme): DataState<Unit>
 
     suspend fun updateUser(user: UserData): DataState<Unit>
+
+    suspend fun updateCustomer(customer: CustomerData): DataState<Unit>
 
     suspend fun updateSettings(appSettings: AppSettings): DataState<Unit>
 

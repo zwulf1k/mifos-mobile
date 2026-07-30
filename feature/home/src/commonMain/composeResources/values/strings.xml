@@ -49,6 +49,7 @@
     <string name="feature_home_selected">Selected</string>
     <string name="feature_home_saving_accounts">Savings Accounts</string>
     <string name="feature_home_loan_accounts">Loan Accounts</string>
+    <string name="feature_home_loan_ipoteka">Loan Ipoteka</string>
     <string name="feature_home_share_accounts">Share Accounts</string>
     <string name="feature_home_apply_for_loan">Apply For Loan</string>
     <string name="feature_home_transaction_history">Transaction History</string>

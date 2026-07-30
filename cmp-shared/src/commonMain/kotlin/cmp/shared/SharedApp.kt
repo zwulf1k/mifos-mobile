@@ -24,6 +24,7 @@ fun SharedApp(
     handleAppLocale: (locale: String?) -> Unit,
     modifier: Modifier = Modifier,
     onSplashScreenRemoved: () -> Unit,
+    overlay: @Composable () -> Unit = {},
 ) {
     LocalManagerProvider(LocalContext.current) {
         LocalImageLoaderProvider(getDefaultImageLoader(LocalPlatformContext.current)) {
@@ -32,6 +33,7 @@ fun SharedApp(
                 handleAppLocale = handleAppLocale,
                 onSplashScreenRemoved = onSplashScreenRemoved,
                 modifier = modifier,
+                overlay = overlay,
             )
         }
     }

@@ -35,6 +35,7 @@ fun ComposeApp(
     handleAppLocale: (locale: String?) -> Unit,
     onSplashScreenRemoved: () -> Unit,
     modifier: Modifier = Modifier,
+    overlay: @Composable () -> Unit = {},
     viewModel: ComposeAppViewModel = koinViewModel(),
 ) {
     val uiState by viewModel.stateFlow.collectAsStateWithLifecycle()
@@ -79,6 +80,9 @@ fun ComposeApp(
                     onSplashScreenRemoved = onSplashScreenRemoved,
                 )
             }
+            // Host extensions must be mounted inside this exact theme boundary so they inherit
+            // the active Mifos colors, typography, shapes and dynamic light/dark mode.
+            overlay()
         }
     }
 }

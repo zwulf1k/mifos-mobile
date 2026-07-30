@@ -77,6 +77,10 @@ enum class LanguageConfig(
         localName = "ru",
         languageName = "Russian (русский)",
     ),
+    UZBEK(
+        localName = "uz",
+        languageName = "Uzbek (o'zbek)",
+    ),
     SWAHILI(
         localName = "sw",
         languageName = "Swahili (Kiswahili)",
