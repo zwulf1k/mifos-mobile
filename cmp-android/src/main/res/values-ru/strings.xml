@@ -437,5 +437,11 @@
     <string name="ui_launch_credit_narrative">Нарратив</string>
     <string name="ui_launch_credit_chat">Чат</string>
     <string name="ui_launch_mortgage">Заявка на ипотеку</string>
+    <string name="ui_saved_title">Сохранённые заявки</string>
+    <string name="ui_saved_empty">Активных заявок пока нет</string>
+    <string name="ui_saved_retry">Повторить</string>
+    <string name="ui_saved_resume">Продолжить заявку</string>
+    <string name="ui_saved_new">Новая заявка на ипотеку</string>
+    <string name="ui_saved_current_step">Текущий этап</string>
     <string name="arci_back">Назад</string>
 </resources>

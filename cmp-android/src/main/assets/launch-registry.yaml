@@ -35,4 +35,5 @@ launch_registry:
     labelKey: ui.launch.mortgage
     appId: mortgage
     steps: [interaction.mtg.mortgage_apply]
+    savedApplicationsEnabled: true
     presentationHint: CLASSIC

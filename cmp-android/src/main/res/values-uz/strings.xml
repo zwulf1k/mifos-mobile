@@ -14,5 +14,11 @@
     <string name="ui_launch_credit_narrative">Bosqichma-bosqich</string>
     <string name="ui_launch_credit_chat">Chat</string>
     <string name="ui_launch_mortgage">Ipoteka arizasi</string>
+    <string name="ui_saved_title">Saqlangan arizalar</string>
+    <string name="ui_saved_empty">Hozircha faol arizalar yo‘q</string>
+    <string name="ui_saved_retry">Qayta urinish</string>
+    <string name="ui_saved_resume">Arizani davom ettirish</string>
+    <string name="ui_saved_new">Yangi ipoteka arizasi</string>
+    <string name="ui_saved_current_step">Joriy bosqich</string>
     <string name="arci_back">Orqaga</string>
 </resources>

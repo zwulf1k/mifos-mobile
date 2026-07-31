@@ -39,14 +39,16 @@ class MifosCustomerContextRepository(
         val refreshed = withTimeoutOrNull(initialRefreshTimeoutMs) {
             homeRepository.currentClient(clientId).first { it !is DataState.Loading }
         }
-        val customer = when (refreshed) {
-            is DataState.Success -> refreshed.data.toCustomerData()
-            is DataState.Error -> throw ArciHostSessionUnavailableException(
-                "Mifos customer context is unavailable",
-                refreshed.exception,
-            )
-            DataState.Loading, null -> throw ArciHostSessionUnavailableException(
-                "Mifos customer context refresh timed out",
+        val customer = (refreshed as? DataState.Success)?.data?.toCustomerData()
+        if (customer == null) {
+            val refreshError = refreshed as? DataState.Error
+            throw ArciHostSessionUnavailableException(
+                if (refreshError == null) {
+                    "Mifos customer context refresh timed out"
+                } else {
+                    "Mifos customer context is unavailable"
+                },
+                refreshError?.exception,
             )
         }
         if (!customer.hasVerifiedIdentity) {

@@ -22,8 +22,8 @@ import template.core.base.ui.getDefaultImageLoader
 fun SharedApp(
     handleThemeMode: (osValue: Int) -> Unit,
     handleAppLocale: (locale: String?) -> Unit,
-    modifier: Modifier = Modifier,
     onSplashScreenRemoved: () -> Unit,
+    modifier: Modifier = Modifier,
     overlay: @Composable () -> Unit = {},
 ) {
     LocalManagerProvider(LocalContext.current) {

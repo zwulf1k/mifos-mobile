@@ -49,7 +49,9 @@ import io.arci.sdk.launch.ArciFlowResult
 import io.arci.sdk.launch.ArciProcess
 import io.arci.sdk.launch.ArciProcessLauncher
 import io.arci.sdk.launch.ArciProcessResult
+import io.arci.sdk.launch.ArciProcessResume
 import io.arci.sdk.launch.ArciStringProvider
+import io.arci.sdk.saved.ArciSavedProcessHub
 
 /** i18n key prefix for the credit-visual picker family — splits registry.list() by product. */
 private const val CREDIT_LABEL_PREFIX = "ui.launch.credit."
@@ -70,7 +72,12 @@ fun mifosLaunchStringProvider(context: Context): ArciStringProvider =
 private sealed interface Route {
     data object Router : Route // credit vs mortgage entry point
     data object CreditVisuals : Route // credit → pick a visual (classic / narrative / chat)
-    data class Launch(val processKey: String, val title: String) : Route
+    data class SavedHub(val processKey: String, val title: String) : Route
+    data class Launch(
+        val processKey: String,
+        val title: String,
+        val resume: ArciProcessResume? = null,
+    ) : Route
 }
 
 /**
@@ -82,10 +89,12 @@ private sealed interface Route {
  * Native "Кредиты"/"Текущие заявки" chrome stays minimal (becomes the ARCI vitrina later, epic #29).
  */
 @OptIn(ExperimentalMaterial3Api::class)
+@Suppress("CyclomaticComplexMethod")
 @Composable
 fun CreditsSectionRoot(
-    initialProcessKey: String? = null,
     onExit: () -> Unit,
+    modifier: Modifier = Modifier,
+    initialProcessKey: String? = null,
 ) {
     val registry = ArciSdk.configuration?.processRegistry
     val strings = ArciSdk.configuration?.stringProvider
@@ -100,12 +109,20 @@ fun CreditsSectionRoot(
     var routeHistory by remember { mutableStateOf<List<Route>>(emptyList()) }
     var processes by remember { mutableStateOf<List<ArciProcess>>(emptyList()) }
 
+    fun label(process: ArciProcess): String =
+        strings?.string(process.labelKey, locale = null) ?: process.labelKey
+
     // ArciProcessRegistry.list() is suspend (spec §8 — a real registry may hit network/DB); load
     // once per registry instance and cache locally for the picker screens.
     LaunchedEffect(registry) { processes = registry?.list().orEmpty() }
 
-    fun label(process: ArciProcess): String =
-        strings?.string(process.labelKey, locale = null) ?: process.labelKey
+    LaunchedEffect(processes, initialProcessKey) {
+        val launch = route as? Route.Launch ?: return@LaunchedEffect
+        val process = processes.firstOrNull { it.key == launch.processKey } ?: return@LaunchedEffect
+        if (routeHistory.isEmpty() && launch.resume == null && process.savedApplicationsEnabled) {
+            route = Route.SavedHub(process.key, label(process))
+        }
+    }
 
     fun navigate(target: Route) {
         routeHistory = routeHistory + route
@@ -124,7 +141,7 @@ fun CreditsSectionRoot(
 
     // Do not install an ARCI theme here. Embedded flows deliberately consume the host
     // MaterialTheme, so Mifos light/dark mode, colors, typography and shapes propagate unchanged.
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         val creditVisuals = processes.filter { it.labelKey.startsWith(CREDIT_LABEL_PREFIX) }
         when (val current = route) {
             Route.CreditVisuals -> CreditVisualsScreen(
@@ -136,12 +153,22 @@ fun CreditsSectionRoot(
                 onBack = ::navigateBack,
             )
             Route.Router -> Unit
+            is Route.SavedHub -> SavedProcessHubScreen(
+                processKey = current.processKey,
+                title = current.title,
+                onNew = { navigate(Route.Launch(current.processKey, current.title)) },
+                onResume = { resume ->
+                    navigate(Route.Launch(current.processKey, current.title, resume))
+                },
+                onBack = ::navigateBack,
+            )
             is Route.Launch -> LaunchScreen(
                 processKey = current.processKey,
                 title = processes.firstOrNull { it.key == current.processKey }
                     ?.let(::label)
                     ?: strings?.string(current.title, locale = null)
                     ?: current.title,
+                resume = current.resume,
                 onBack = ::navigateBack,
                 onResult = { result ->
                     if (result !is ArciProcessResult.Completed) {
@@ -160,7 +187,13 @@ fun CreditsSectionRoot(
                             ?: result.last.returnTo?.targetRef
                             ?: result.last.fieldValues["field:routeTarget"]
                     if (selectedProcess != null) {
-                        navigate(Route.Launch(selectedProcess.key, label(selectedProcess)))
+                        val target =
+                            if (selectedProcess.savedApplicationsEnabled) {
+                                Route.SavedHub(selectedProcess.key, label(selectedProcess))
+                            } else {
+                                Route.Launch(selectedProcess.key, label(selectedProcess))
+                            }
+                        navigate(target)
                     } else if (routeTarget == "credit_lead_intake") {
                         // Compatibility for an older storefront response without a selected
                         // process action. New storefront versions route directly above.
@@ -182,34 +215,23 @@ fun CreditsSectionRoot(
 }
 
 @Composable
-private fun RouterScreen(
-    hasCredit: Boolean,
-    mortgageLabel: String?,
-    onCredit: () -> Unit,
-    onMortgage: () -> Unit,
+private fun SavedProcessHubScreen(
+    processKey: String,
+    title: String,
+    onNew: () -> Unit,
+    onResume: (ArciProcessResume) -> Unit,
     onBack: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
     Column(Modifier.fillMaxSize()) {
-        GreenBar("Кредиты", onBack)
-        Column(
-            Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Text("Текущие заявки", style = MaterialTheme.typography.titleMedium)
-            Text(
-                "Пока нет активных заявок",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                "Оформить новую",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (hasCredit) FilledBtn("Заявка на любой кредит", onCredit)
-            if (mortgageLabel != null) OutlineBtn(mortgageLabel, onMortgage)
-        }
+        GreenBar(title, onBack)
+        ArciSavedProcessHub(
+            processKey = processKey,
+            locale = currentArciLocale(),
+            onNewProcess = onNew,
+            onResume = onResume,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 
@@ -245,6 +267,7 @@ private fun CreditVisualsScreen(
 private fun LaunchScreen(
     processKey: String,
     title: String,
+    resume: ArciProcessResume?,
     onBack: () -> Unit,
     onResult: (ArciProcessResult) -> Unit,
 ) {
@@ -264,15 +287,12 @@ private fun LaunchScreen(
         GreenBar(title) { backDispatcher?.onBackPressed() ?: closeOnce() }
         ArciProcessLauncher(
             processKey = processKey,
+            resume = resume,
             modifier = Modifier.fillMaxSize(),
             // Host's PROFILE language (Settings > Language → LanguageConfig, persisted per-app via
             // AppCompatDelegate). Read AppCompatDelegate directly so a fresh cold start after a
             // locale change still serves the right ARCI language (see prior FlowScreen note).
-            locale = androidx.appcompat.app.AppCompatDelegate.getApplicationLocales()
-                .takeIf { !it.isEmpty }
-                ?.get(0)
-                ?.language
-                ?: java.util.Locale.getDefault().language,
+            locale = currentArciLocale(),
             onMissing = closeOnce,
             onResult = { result ->
                 val retryableFailure =
@@ -290,6 +310,13 @@ private fun LaunchScreen(
         )
     }
 }
+
+private fun currentArciLocale(): String =
+    androidx.appcompat.app.AppCompatDelegate.getApplicationLocales()
+        .takeIf { !it.isEmpty }
+        ?.get(0)
+        ?.language
+        ?: java.util.Locale.getDefault().language
 
 @Composable
 private fun FilledBtn(label: String, onClick: () -> Unit) = Button(

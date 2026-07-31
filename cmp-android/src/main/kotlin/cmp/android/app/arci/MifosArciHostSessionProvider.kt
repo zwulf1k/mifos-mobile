@@ -11,6 +11,7 @@ package cmp.android.app.arci
 
 import io.arci.sdk.session.ArciClientProfile
 import io.arci.sdk.session.ArciClientProfileSource
+import io.arci.sdk.session.ArciHostAuthorization
 import io.arci.sdk.session.ArciHostSession
 import io.arci.sdk.session.ArciHostSessionProvider
 import io.arci.sdk.session.ArciHostSessionUnavailableException
@@ -35,9 +36,10 @@ class MifosArciHostSessionProvider(
         }
 
         val customer = customerContexts.current(clientId)
+        val subjectId = "mifos:${user.userId}"
 
         return ArciHostSession(
-            subjectId = user.userId.toString(),
+            subjectId = subjectId,
             profile = ArciClientProfile(
                 partyId = customer.clientId.toString(),
                 firstName = customer.firstName,
@@ -47,6 +49,13 @@ class MifosArciHostSessionProvider(
                 pinfl = customer.pinfl ?: MifosMyIdTestControl.profilePinfl(),
                 birthDateIso = customer.birthDateIso,
                 source = ArciClientProfileSource.HOST_CORE_BANKING,
+            ),
+            // The production BFF replaces this trusted identity assertion with its validated
+            // session/JWT principal. The local integration endpoint accepts the same typed host
+            // authorization contract so open/list/resume are scoped to one authenticated client.
+            authorization = ArciHostAuthorization(
+                headerName = "X-Arci-Principal",
+                headerValue = subjectId,
             ),
         )
     }

@@ -663,5 +663,11 @@
     <string name="ui_launch_credit_narrative">Narrative</string>
     <string name="ui_launch_credit_chat">Chat</string>
     <string name="ui_launch_mortgage">Mortgage application</string>
+    <string name="ui_saved_title">Saved applications</string>
+    <string name="ui_saved_empty">No active applications yet</string>
+    <string name="ui_saved_retry">Try again</string>
+    <string name="ui_saved_resume">Continue application</string>
+    <string name="ui_saved_new">New mortgage application</string>
+    <string name="ui_saved_current_step">Current step</string>
     <string name="arci_back">Back</string>
 </resources>
