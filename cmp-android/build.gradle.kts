@@ -143,8 +143,8 @@ dependencies {
     implementation(libs.filekit.dialog.compose)
 
     // Arci SDK — generic IR renderer embedded via ArciFlow (Android Compose)
-    implementation("io.arci:arci-android-sdk:0.0.9-dev.59.20260731.5")
-    implementation("io.arci:arci-mobile-ir-runtime:0.0.9-dev.59.20260731.5")
+    implementation("io.arci:arci-android-sdk:0.0.9-dev.64.20260802.2")
+    implementation("io.arci:arci-mobile-ir-runtime:0.0.9-dev.64.20260802.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0") // ArciHostConfiguration.httpClientProvider
 
     testImplementation(kotlin("test"))

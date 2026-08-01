@@ -13,6 +13,7 @@ import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -56,6 +59,14 @@ import io.arci.sdk.saved.ArciSavedProcessHub
 /** i18n key prefix for the credit-visual picker family — splits registry.list() by product. */
 private const val CREDIT_LABEL_PREFIX = "ui.launch.credit."
 private const val CREDIT_STOREFRONT_PROCESS_KEY = "credit_storefront"
+
+/**
+ * Arci.Mobile#64 bug 2 — the storefront LLM assistant process (launch-registry.yaml key `assistant`,
+ * single-step CHAT `interaction.cstf.assistant_chat` on the `credit_storefront` BFF). The vitrina
+ * routes here; the host renders a continuous inline chat thread instead of the generic per-turn
+ * [LaunchScreen] (which would pop back to the vitrina after every send).
+ */
+private const val ASSISTANT_PROCESS_KEY = "assistant"
 
 /**
  * [ArciStringProvider] over Android string resources: resolves a `ui.launch.*` labelKey to the
@@ -162,54 +173,71 @@ fun CreditsSectionRoot(
                 },
                 onBack = ::navigateBack,
             )
-            is Route.Launch -> LaunchScreen(
-                processKey = current.processKey,
-                title = processes.firstOrNull { it.key == current.processKey }
-                    ?.let(::label)
-                    ?: strings?.string(current.title, locale = null)
-                    ?: current.title,
-                resume = current.resume,
-                onBack = ::navigateBack,
-                onResult = { result ->
-                    if (result !is ArciProcessResult.Completed) {
-                        navigateBack()
-                        return@LaunchScreen
+            is Route.Launch -> if (current.processKey == ASSISTANT_PROCESS_KEY) {
+                // Arci.Mobile#64 bug 2 — continuous inline assistant chat (host-owned), not the
+                // per-turn LaunchScreen. Wait for the async registry to resolve the process first.
+                val assistantProcess = processes.firstOrNull { it.key == ASSISTANT_PROCESS_KEY }
+                if (assistantProcess != null) {
+                    AssistantChatScreen(
+                        process = assistantProcess,
+                        title = label(assistantProcess),
+                        onBack = ::navigateBack,
+                    )
+                } else {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
                     }
-                    if (current.processKey != CREDIT_STOREFRONT_PROCESS_KEY) {
-                        navigateBack()
-                        return@LaunchScreen
-                    }
-                    val selectedProcess =
-                        result.last.terminalActionId
-                            ?.let { selectedKey -> processes.firstOrNull { it.key == selectedKey } }
-                    val routeTarget =
-                        selectedProcess?.key
-                            ?: result.last.returnTo?.targetRef
-                            ?: result.last.fieldValues["field:routeTarget"]
-                    if (selectedProcess != null) {
-                        val target =
-                            if (selectedProcess.savedApplicationsEnabled) {
-                                Route.SavedHub(selectedProcess.key, label(selectedProcess))
-                            } else {
-                                Route.Launch(selectedProcess.key, label(selectedProcess))
-                            }
-                        navigate(target)
-                    } else if (routeTarget == "credit_lead_intake") {
-                        // Compatibility for an older storefront response without a selected
-                        // process action. New storefront versions route directly above.
-                        navigate(Route.CreditVisuals)
-                    } else {
-                        val target = processes.firstOrNull {
-                            it.key == routeTarget || it.appId == routeTarget
+                }
+            } else {
+                LaunchScreen(
+                    processKey = current.processKey,
+                    title = processes.firstOrNull { it.key == current.processKey }
+                        ?.let(::label)
+                        ?: strings?.string(current.title, locale = null)
+                        ?: current.title,
+                    resume = current.resume,
+                    onBack = ::navigateBack,
+                    onResult = { result ->
+                        if (result !is ArciProcessResult.Completed) {
+                            navigateBack()
+                            return@LaunchScreen
                         }
-                        if (target == null) {
-                            onExit()
+                        if (current.processKey != CREDIT_STOREFRONT_PROCESS_KEY) {
+                            navigateBack()
+                            return@LaunchScreen
+                        }
+                        val selectedProcess =
+                            result.last.terminalActionId
+                                ?.let { selectedKey -> processes.firstOrNull { it.key == selectedKey } }
+                        val routeTarget =
+                            selectedProcess?.key
+                                ?: result.last.returnTo?.targetRef
+                                ?: result.last.fieldValues["field:routeTarget"]
+                        if (selectedProcess != null) {
+                            val target =
+                                if (selectedProcess.savedApplicationsEnabled) {
+                                    Route.SavedHub(selectedProcess.key, label(selectedProcess))
+                                } else {
+                                    Route.Launch(selectedProcess.key, label(selectedProcess))
+                                }
+                            navigate(target)
+                        } else if (routeTarget == "credit_lead_intake") {
+                            // Compatibility for an older storefront response without a selected
+                            // process action. New storefront versions route directly above.
+                            navigate(Route.CreditVisuals)
                         } else {
-                            navigate(Route.Launch(target.key, label(target)))
+                            val target = processes.firstOrNull {
+                                it.key == routeTarget || it.appId == routeTarget
+                            }
+                            if (target == null) {
+                                onExit()
+                            } else {
+                                navigate(Route.Launch(target.key, label(target)))
+                            }
                         }
-                    }
-                },
-            )
+                    },
+                )
+            }
         }
     }
 }
@@ -334,7 +362,7 @@ private fun OutlineBtn(label: String, onClick: () -> Unit) = OutlinedButton(
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
-private fun GreenBar(title: String, onBack: () -> Unit) = TopAppBar(
+internal fun GreenBar(title: String, onBack: () -> Unit) = TopAppBar(
     title = { Text(title, style = MaterialTheme.typography.titleLarge) },
     navigationIcon = {
         IconButton(
