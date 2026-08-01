@@ -659,6 +659,7 @@
 
     <!-- ARCI launch registry labels (ui.launch.* labelKeys, resolved via ArciStringProvider) -->
     <string name="ui_launch_storefront">Credit storefront</string>
+    <string name="ui_launch_assistant">Assistant</string>
     <string name="ui_launch_credit_classic">Classic</string>
     <string name="ui_launch_credit_narrative">Narrative</string>
     <string name="ui_launch_credit_chat">Chat</string>

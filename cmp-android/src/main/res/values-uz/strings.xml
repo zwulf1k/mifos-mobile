@@ -10,6 +10,7 @@
 -->
 <resources>
     <string name="ui_launch_storefront">Kreditlar vitrinasi</string>
+    <string name="ui_launch_assistant">Yordamchi</string>
     <string name="ui_launch_credit_classic">Klassik</string>
     <string name="ui_launch_credit_narrative">Bosqichma-bosqich</string>
     <string name="ui_launch_credit_chat">Chat</string>

@@ -433,6 +433,7 @@
 
     <!-- ARCI launch registry labels (ui.launch.* labelKeys, resolved via ArciStringProvider) -->
     <string name="ui_launch_storefront">Витрина кредитов</string>
+    <string name="ui_launch_assistant">Ассистент</string>
     <string name="ui_launch_credit_classic">Классика</string>
     <string name="ui_launch_credit_narrative">Нарратив</string>
     <string name="ui_launch_credit_chat">Чат</string>

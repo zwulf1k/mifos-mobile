@@ -37,3 +37,10 @@ launch_registry:
     steps: [interaction.mtg.mortgage_apply]
     savedApplicationsEnabled: true
     presentationHint: CLASSIC
+  # Arci.Mobile#60 Thrust B — storefront LLM assistant (single-step CHAT), served by the
+  # credit_storefront BFF; the vitrina step:route_assistant hands off to this key.
+  - key: assistant
+    labelKey: ui.launch.assistant
+    appId: credit_storefront
+    steps: [interaction.cstf.assistant_chat]
+    presentationHint: CHAT
