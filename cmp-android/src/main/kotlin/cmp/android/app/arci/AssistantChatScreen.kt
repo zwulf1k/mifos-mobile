@@ -18,12 +18,16 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,15 +38,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -56,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -88,11 +91,74 @@ private data class AssistantThreadRecord(
     val status: String,
 )
 
-private val SUGGESTION_CHIPS = listOf(
-    "Ставка по ипотеке",
-    "Какие документы нужны",
-    "Первоначальный взнос",
-    "Позвать оператора",
+/**
+ * Static UI strings for the assistant chat, resolved for the ACTIVE app locale. The greeting +
+ * composer placeholder + send label are ALSO served (authoritative) by the BFF presentation
+ * (`ui.cstf.chat.*`, localized by the session-open `locale` param) — these literals are the offline
+ * fallback used until that presentation resolves, and the source of the host-only suggestion chips
+ * and error copy, which the presentation does not carry. Keyed off the active locale so an English
+ * device renders English chrome, a Russian device Russian — matching the rest of the shell.
+ */
+private data class ChatI18n(
+    val greeting: String,
+    val placeholder: String,
+    val sendLabel: String,
+    val chips: List<String>,
+    val answerFailed: String,
+    val sendFailed: String,
+    val connError: String,
+)
+
+private fun chatI18n(locale: String): ChatI18n = when {
+    locale.startsWith("en") -> ChatI18n(
+        greeting = "Hi! I'm the Uy assistant — ask me anything about our credit products.",
+        placeholder = "Ask a question about our credit products",
+        sendLabel = "Send",
+        chips = listOf(
+            "Mortgage rate",
+            "What documents are needed",
+            "Down payment",
+            "Talk to an operator",
+        ),
+        answerFailed = "Couldn't get an answer. Please try asking again.",
+        sendFailed = "Couldn't send your question. Please try again.",
+        connError = "Connection error.",
+    )
+    locale.startsWith("uz") -> ChatI18n(
+        greeting = "Salom! Men Uy yordamchisiman — kredit mahsulotlari haqida so'rang.",
+        placeholder = "Kredit mahsulotlari haqida savol bering",
+        sendLabel = "Yuborish",
+        chips = listOf(
+            "Ipoteka stavkasi",
+            "Qanday hujjatlar kerak",
+            "Boshlang'ich to'lov",
+            "Operatorni chaqirish",
+        ),
+        answerFailed = "Javob olinmadi. Iltimos, savolni qayta bering.",
+        sendFailed = "Savol yuborilmadi. Iltimos, qayta urinib ko'ring.",
+        connError = "Server bilan aloqa xatosi.",
+    )
+    else -> ChatI18n(
+        greeting = "Здравствуйте! Я ассистент Uy — спрошу что вас интересует по кредитам.",
+        placeholder = "Задайте вопрос об кредитных продуктах",
+        sendLabel = "Отправить",
+        chips = listOf(
+            "Ставка по ипотеке",
+            "Какие документы нужны",
+            "Первоначальный взнос",
+            "Позвать оператора",
+        ),
+        answerFailed = "Не удалось получить ответ. Попробуйте задать вопрос ещё раз.",
+        sendFailed = "Не удалось отправить вопрос. Попробуйте ещё раз.",
+        connError = "Ошибка соединения с сервером.",
+    )
+}
+
+/** Authoritative localized chat chrome from the BFF presentation (`ui.cstf.chat.*`). */
+private data class AssistantStrings(
+    val greeting: String?,
+    val placeholder: String?,
+    val sendLabel: String?,
 )
 
 /**
@@ -110,10 +176,12 @@ private val SUGGESTION_CHIPS = listOf(
 internal fun AssistantChatScreen(
     process: ArciProcess,
     title: String,
+    locale: String,
     onBack: () -> Unit,
 ) {
     BackHandler(onBack = onBack)
     val scope = rememberCoroutineScope()
+    val i18n = remember(locale) { chatI18n(locale) }
 
     val conversationRef = rememberSaveable { UUID.randomUUID().toString() }
     val httpClient = remember { OkHttpClient() }
@@ -124,6 +192,9 @@ internal fun AssistantChatScreen(
     // Optimistic bubble: shows the just-sent question instantly, until the read-model row appears.
     var pendingQuestion by remember { mutableStateOf<String?>(null) }
     var sendError by remember { mutableStateOf<String?>(null) }
+    // Authoritative localized chrome from the BFF presentation (ui.cstf.chat.*), fetched with the
+    // active locale; until it resolves (or if it fails) the locale-matched fallback copy is shown.
+    var presentation by remember { mutableStateOf<AssistantStrings?>(null) }
 
     val baseUrl = remember { mutableStateOf<String?>(null) }
     val step = remember(process) { process.steps.first() }
@@ -133,6 +204,17 @@ internal fun AssistantChatScreen(
             ?.resolve(ArciLaunchRequest(target = ArciTarget(process.appId, step.interactionId)))
             ?.baseUrl
     }
+    // Resolve the localized greeting / placeholder / send label from the BFF presentation using the
+    // ACTIVE locale — so English device → English chat chrome. Non-blocking: fallback copy shows first.
+    LaunchedEffect(process, locale) {
+        presentation = runCatching {
+            fetchAssistantStrings(process, step.interactionId, locale)
+        }.getOrNull()
+    }
+
+    val greeting = presentation?.greeting ?: i18n.greeting
+    val placeholder = presentation?.placeholder ?: i18n.placeholder
+    val sendLabel = presentation?.sendLabel ?: i18n.sendLabel
 
     // Poll the durable thread ~1s while mounted so a freshly answered row shows inline.
     LaunchedEffect(baseUrl.value, conversationRef) {
@@ -156,8 +238,11 @@ internal fun AssistantChatScreen(
                     val r = arr?.optJSONObject(i) ?: continue
                     // org.json quirk: optString on a JSON null returns the literal "null" — guard it
                     // so a still-pending answer stays null (→ typing indicator), never a "null" bubble.
-                    val answer = if (r.isNull("answer")) null
-                    else r.optString("answer").takeIf { it.isNotBlank() && it != "null" }
+                    val answer = if (r.isNull("answer")) {
+                        null
+                    } else {
+                        r.optString("answer").takeIf { it.isNotBlank() && it != "null" }
+                    }
                     next += AssistantThreadRecord(r.optString("question"), answer, r.optString("status"))
                 }
                 records = next
@@ -167,7 +252,7 @@ internal fun AssistantChatScreen(
                     pendingQuestion = null
                 }
             } catch (e: Exception) {
-                pollError = e.message ?: "Ошибка соединения с сервером."
+                pollError = e.message ?: i18n.connError
             }
             delay(1000)
         }
@@ -181,11 +266,11 @@ internal fun AssistantChatScreen(
         pendingQuestion = q
         scope.launch {
             try {
-                submitAssistantTurn(process, step.interactionId, conversationRef, q)
+                submitAssistantTurn(process, step.interactionId, conversationRef, q, locale)
                 // The poller surfaces the row + grounded answer; keep the optimistic bubble until then.
             } catch (e: Exception) {
                 pendingQuestion = null
-                sendError = e.message ?: "Не удалось отправить вопрос. Попробуйте ещё раз."
+                sendError = e.message ?: i18n.sendFailed
             }
         }
     }
@@ -197,14 +282,34 @@ internal fun AssistantChatScreen(
 
         val listState = rememberLazyListState()
         val hasThread = records.isNotEmpty() || pendingQuestion != null
-        // Auto-scroll to the newest content.
-        LaunchedEffect(records.size, pendingQuestion) {
-            val count = records.size + (if (pendingQuestion != null) 1 else 0)
-            if (count > 0) listState.animateScrollToItem(count - 1)
+        val pendingShown = pendingQuestion != null && records.none { it.question == pendingQuestion }
+        // Deterministic item count: 2 bubbles per record (question + answer/typing/failed), 2 more for
+        // an optimistic pending turn, and 1 trailing sentinel spacer that lets the newest bubble scroll
+        // fully ABOVE the composer. Computed from data (not layoutInfo) so it is exact on the frame the
+        // effect fires.
+        val itemCount = records.size * 2 + (if (pendingShown) 2 else 0) + 1
+        // Keyboard visibility — re-triggers the auto-scroll when the IME opens/closes so the latest
+        // bubble stays visible in the resized area above the composer (fires on the transition, not
+        // every animation frame).
+        val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+        // Auto-scroll to the TRUE bottom (the sentinel) on every thread change — new question, typing
+        // indicator appearing, typing→answer swap (last record's answer/status change), the optimistic
+        // bubble, and keyboard open. Landing on the sentinel guarantees the end of a long last answer
+        // is reached, not just its start.
+        LaunchedEffect(
+            itemCount,
+            records.lastOrNull()?.answer,
+            records.lastOrNull()?.status,
+            pendingQuestion,
+            imeVisible,
+        ) {
+            if (hasThread) listState.animateScrollToItem(itemCount - 1)
         }
 
         if (!hasThread) {
             AssistantEmptyState(
+                greeting = greeting,
+                chips = i18n.chips,
                 onChip = { send(it) },
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             )
@@ -220,17 +325,18 @@ internal fun AssistantChatScreen(
                     when {
                         rec.answer != null -> item { AssistantBubble(rec.answer) }
                         rec.status == "FAILED" -> item {
-                            AssistantBubble("Не удалось получить ответ. Попробуйте задать вопрос ещё раз.", error = true)
+                            AssistantBubble(i18n.answerFailed, error = true)
                         }
                         else -> item { TypingBubble() }
                     }
                 }
-                pendingQuestion?.let { pq ->
-                    if (records.none { it.question == pq }) {
-                        item { UserBubble(pq) }
-                        item { TypingBubble() }
-                    }
+                if (pendingShown) {
+                    item { UserBubble(pendingQuestion!!) }
+                    item { TypingBubble() }
                 }
+                // Trailing spacer: the reachable bottom of the scroll region, so the newest bubble can
+                // sit clear of the composer and a long answer's tail is fully scrollable into view.
+                item { Spacer(Modifier.height(12.dp)) }
             }
         }
 
@@ -253,6 +359,8 @@ internal fun AssistantChatScreen(
 
         Composer(
             value = input,
+            placeholder = placeholder,
+            sendLabel = sendLabel,
             onValueChange = { input = it },
             onSend = { send(input) },
         )
@@ -262,7 +370,13 @@ internal fun AssistantChatScreen(
 // ── Composer ──────────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun Composer(value: String, onValueChange: (String) -> Unit, onSend: () -> Unit) {
+private fun Composer(
+    value: String,
+    placeholder: String,
+    sendLabel: String,
+    onValueChange: (String) -> Unit,
+    onSend: () -> Unit,
+) {
     Surface(shadowElevation = 8.dp, color = MaterialTheme.colorScheme.surface) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -273,7 +387,7 @@ private fun Composer(value: String, onValueChange: (String) -> Unit, onSend: () 
                 value = value,
                 onValueChange = onValueChange,
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Задайте вопрос об кредитных продуктах") },
+                placeholder = { Text(placeholder) },
                 shape = RoundedCornerShape(24.dp),
                 maxLines = 4,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -290,7 +404,7 @@ private fun Composer(value: String, onValueChange: (String) -> Unit, onSend: () 
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Отправить",
+                        contentDescription = sendLabel,
                         tint = if (enabled) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(22.dp),
                     )
@@ -404,7 +518,12 @@ private fun AssistantAvatar() {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun AssistantEmptyState(onChip: (String) -> Unit, modifier: Modifier = Modifier) {
+private fun AssistantEmptyState(
+    greeting: String,
+    chips: List<String>,
+    onChip: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier.padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -421,7 +540,7 @@ private fun AssistantEmptyState(onChip: (String) -> Unit, modifier: Modifier = M
         }
         Spacer(Modifier.height(16.dp))
         Text(
-            "Здравствуйте! Я ассистент Uy — спрошу что вас интересует по кредитам.",
+            greeting,
             style = MaterialTheme.typography.titleMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurface,
@@ -432,7 +551,7 @@ private fun AssistantEmptyState(onChip: (String) -> Unit, modifier: Modifier = M
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            for (chip in SUGGESTION_CHIPS) {
+            for (chip in chips) {
                 SuggestionChip(onClick = { onChip(chip) }, label = { Text(chip) })
             }
         }
@@ -452,11 +571,12 @@ private suspend fun submitAssistantTurn(
     interactionId: String,
     conversationRef: String,
     question: String,
+    locale: String,
 ) {
     val cfg = ArciSdk.configuration ?: error("ArciSdk not configured")
     val target = ArciTarget(process.appId, interactionId)
     val endpoint = cfg.endpointResolver.resolve(ArciLaunchRequest(target = target))
-    val product = endpoint.toProductConfig(target, "ru")
+    val product = endpoint.toProductConfig(target, locale)
     val bff = OkHttpInteractionBffClient(product.baseUrl, cfg.httpClientProvider())
     val rt = InteractionRuntime(bff)
     try {
@@ -486,6 +606,43 @@ private suspend fun submitAssistantTurn(
                 it.phase == InteractionSessionPhase.terminal_business_stop ||
                 it.phase == InteractionSessionPhase.fatal_error
         }
+    } finally {
+        rt.shutdown()
+    }
+}
+
+/**
+ * Reads the authoritative, LOCALE-resolved chat chrome (greeting / composer placeholder / send label)
+ * from the BFF presentation: opens a read-only session for [interactionId] with the ACTIVE [locale],
+ * pulls the `ui.cstf.chat.*` strings the BFF localized (props `chatIntro` / `chatPrompt` / `done`),
+ * then shuts the session down without submitting. So an English device gets English chat strings, a
+ * Russian device Russian — the same locale the host passes on every turn.
+ */
+private suspend fun fetchAssistantStrings(
+    process: ArciProcess,
+    interactionId: String,
+    locale: String,
+): AssistantStrings {
+    val cfg = ArciSdk.configuration ?: return AssistantStrings(null, null, null)
+    val target = ArciTarget(process.appId, interactionId)
+    val endpoint = cfg.endpointResolver.resolve(ArciLaunchRequest(target = target))
+    val product = endpoint.toProductConfig(target, locale)
+    val bff = OkHttpInteractionBffClient(product.baseUrl, cfg.httpClientProvider())
+    val rt = InteractionRuntime(bff)
+    try {
+        rt.dispatch(InteractionCommand.OpenSession(product))
+        val ready = rt.state.first {
+            it.presentation != null &&
+                (it.phase == InteractionSessionPhase.ready || it.phase == InteractionSessionPhase.validation_error)
+        }
+        val model = ready.presentation!!
+        fun prop(key: String): String? =
+            model.nodes.values.firstNotNullOfOrNull { it.props[key]?.takeIf(String::isNotBlank) }
+        return AssistantStrings(
+            greeting = prop("chatIntro"),
+            placeholder = prop("chatPrompt"),
+            sendLabel = prop("done"),
+        )
     } finally {
         rt.shutdown()
     }

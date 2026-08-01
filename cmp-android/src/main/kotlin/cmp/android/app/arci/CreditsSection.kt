@@ -181,6 +181,7 @@ fun CreditsSectionRoot(
                     AssistantChatScreen(
                         process = assistantProcess,
                         title = label(assistantProcess),
+                        locale = currentArciLocale(),
                         onBack = ::navigateBack,
                     )
                 } else {
