@@ -84,6 +84,14 @@ import java.io.IOException
 import java.net.URLEncoder
 import java.util.UUID
 
+/**
+ * Arci.Mobile#66 — max time a turn may sit answer-less (row not yet ANSWERED/FAILED) before the chat
+ * gives up waiting and shows the visible error bubble instead of an endless typing spinner. Covers the
+ * pathological case where the backend never terminates the turn at all (LLM step threw before the
+ * write-back sink, so the row is stuck ASKED). 45s comfortably exceeds a normal grounded round-trip.
+ */
+private const val STALL_TIMEOUT_MS = 45_000L
+
 /** One durable row of the assistant thread read-model (`entity.cstf.assistant_message`). */
 private data class AssistantThreadRecord(
     val question: String,
@@ -107,6 +115,7 @@ private data class ChatI18n(
     val answerFailed: String,
     val sendFailed: String,
     val connError: String,
+    val retry: String,
 )
 
 private fun chatI18n(locale: String): ChatI18n = when {
@@ -120,9 +129,10 @@ private fun chatI18n(locale: String): ChatI18n = when {
             "Down payment",
             "Talk to an operator",
         ),
-        answerFailed = "Couldn't get an answer. Please try asking again.",
+        answerFailed = "⚠ Couldn't get a reply, please try again.",
         sendFailed = "Couldn't send your question. Please try again.",
         connError = "Connection error.",
+        retry = "Try again",
     )
     locale.startsWith("uz") -> ChatI18n(
         greeting = "Salom! Men Uy yordamchisiman — kredit mahsulotlari haqida so'rang.",
@@ -134,9 +144,10 @@ private fun chatI18n(locale: String): ChatI18n = when {
             "Boshlang'ich to'lov",
             "Operatorni chaqirish",
         ),
-        answerFailed = "Javob olinmadi. Iltimos, savolni qayta bering.",
+        answerFailed = "⚠ Javob olinmadi, iltimos qayta urinib ko'ring.",
         sendFailed = "Savol yuborilmadi. Iltimos, qayta urinib ko'ring.",
         connError = "Server bilan aloqa xatosi.",
+        retry = "Qayta urinish",
     )
     else -> ChatI18n(
         greeting = "Здравствуйте! Я ассистент Uy — спрошу что вас интересует по кредитам.",
@@ -148,9 +159,10 @@ private fun chatI18n(locale: String): ChatI18n = when {
             "Первоначальный взнос",
             "Позвать оператора",
         ),
-        answerFailed = "Не удалось получить ответ. Попробуйте задать вопрос ещё раз.",
+        answerFailed = "⚠ Не удалось получить ответ, попробуйте ещё раз.",
         sendFailed = "Не удалось отправить вопрос. Попробуйте ещё раз.",
         connError = "Ошибка соединения с сервером.",
+        retry = "Попробовать снова",
     )
 }
 
@@ -188,6 +200,15 @@ internal fun AssistantChatScreen(
 
     var records by remember { mutableStateOf<List<AssistantThreadRecord>>(emptyList()) }
     var pollError by remember { mutableStateOf<String?>(null) }
+    // Arci.Mobile#66 — stall watchdog. A turn is normally terminated by the reply flow (ANSWERED, or
+    // now FAILED on a failed/empty completion — CreditStorefront#11). But if a turn NEVER terminates
+    // (row stuck ASKED because the LLM step threw before write-back, or the answer never lands), the
+    // typing indicator would otherwise spin forever — a silent failure. `nowMs` ticks each poll and
+    // `pendingSince` stamps when each question first went pending; a turn still answer-less past
+    // STALL_TIMEOUT_MS is surfaced as the SAME visible error bubble, so the spinner can never be
+    // infinite regardless of what the backend does.
+    var nowMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    val pendingSince = remember { mutableMapOf<String, Long>() }
     var input by rememberSaveable { mutableStateOf("") }
     // Optimistic bubble: shows the just-sent question instantly, until the read-model row appears.
     var pendingQuestion by remember { mutableStateOf<String?>(null) }
@@ -247,6 +268,13 @@ internal fun AssistantChatScreen(
                 }
                 records = next
                 pollError = null
+                // Tick the clock and stamp/clear per-question pending timers for the stall watchdog.
+                nowMs = System.currentTimeMillis()
+                for (rec in next) {
+                    val answerless = rec.answer == null && rec.status != "FAILED"
+                    if (answerless) pendingSince.getOrPut(rec.question) { nowMs }
+                    else pendingSince.remove(rec.question)
+                }
                 // Drop the optimistic bubble once its row is durable.
                 if (pendingQuestion != null && next.any { it.question == pendingQuestion }) {
                     pendingQuestion = null
@@ -322,10 +350,15 @@ internal fun AssistantChatScreen(
             ) {
                 for (rec in records) {
                     item { UserBubble(rec.question) }
+                    // Error when the row is terminally FAILED, OR terminated with no answer, OR has
+                    // stalled answer-less past the watchdog — any of these ends the typing spinner.
+                    val stalled = rec.answer == null &&
+                        (nowMs - (pendingSince[rec.question] ?: nowMs)) > STALL_TIMEOUT_MS
+                    val errored = rec.status == "FAILED" || stalled
                     when {
                         rec.answer != null -> item { AssistantBubble(rec.answer) }
-                        rec.status == "FAILED" -> item {
-                            AssistantBubble(i18n.answerFailed, error = true)
+                        errored -> item {
+                            AssistantErrorBubble(i18n.answerFailed, i18n.retry, onRetry = { send(rec.question) })
                         }
                         else -> item { TypingBubble() }
                     }
@@ -456,6 +489,50 @@ private fun AssistantBubble(text: String, error: Boolean = false) {
                 color = if (error) Color(0xFFC0392B) else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             )
+        }
+    }
+}
+
+/**
+ * Arci.Mobile#66 — visible assistant-side error state shown INSTEAD of the endless typing indicator
+ * when a turn fails (status=FAILED / terminal-null / stalled). Red-tinted bubble carrying the
+ * localized "couldn't get a reply" copy plus an inline Retry affordance that re-sends the question.
+ */
+@Composable
+private fun AssistantErrorBubble(text: String, retryLabel: String, onRetry: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.Top,
+    ) {
+        AssistantAvatar()
+        Spacer(Modifier.size(8.dp))
+        Surface(
+            shape = RoundedCornerShape(20.dp, 20.dp, 20.dp, 4.dp),
+            color = Color(0xFFFDECEC),
+            shadowElevation = 1.dp,
+            modifier = Modifier.widthIn(max = 300.dp),
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(
+                    text,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color(0xFFC0392B),
+                )
+                Spacer(Modifier.height(6.dp))
+                Surface(
+                    onClick = onRetry,
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFFC0392B),
+                ) {
+                    Text(
+                        retryLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    )
+                }
+            }
         }
     }
 }
