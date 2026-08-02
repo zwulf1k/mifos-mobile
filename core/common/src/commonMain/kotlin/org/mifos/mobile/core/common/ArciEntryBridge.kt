@@ -17,4 +17,11 @@ package org.mifos.mobile.core.common
  */
 object ArciEntryBridge {
     var open: (() -> Unit)? = null
+
+    /**
+     * Set by the authenticated navbar (via DisposableEffect) so the Android host can show the
+     * global central assistant button ONLY while the user is inside the authenticated app —
+     * never on splash/login/passcode. `true` on enter, `false` on leave.
+     */
+    var onAuthenticatedChanged: ((Boolean) -> Unit)? = null
 }

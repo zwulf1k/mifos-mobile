@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -31,6 +32,7 @@ import cmp.navigation.ui.ScaffoldNavigationData
 import cmp.navigation.ui.rememberMifosNavController
 import kotlinx.collections.immutable.persistentListOf
 import org.koin.compose.viewmodel.koinViewModel
+import org.mifos.mobile.core.common.ArciEntryBridge
 import org.mifos.mobile.core.ui.RootTransitionProviders
 import org.mifos.mobile.core.ui.navigation.NavigationItem
 import org.mifos.mobile.core.ui.utils.EventsEffect
@@ -55,6 +57,13 @@ internal fun AuthenticatedNavbarNavigationScreen(
     viewModel: AuthenticatedNavbarNavigationViewModel = koinViewModel(),
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Tell the Android host the user is inside the authenticated app, so it can show the global
+    // central assistant button here (and hide it on splash/login/passcode). Arci.Mobile#77.
+    DisposableEffect(Unit) {
+        ArciEntryBridge.onAuthenticatedChanged?.invoke(true)
+        onDispose { ArciEntryBridge.onAuthenticatedChanged?.invoke(false) }
+    }
 
     EventsEffect(eventFlow = viewModel.eventFlow) { event ->
         navController.apply {

@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.core.os.LocaleListCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
+import cmp.android.app.arci.AssistantLauncherOverlay
 import cmp.android.app.arci.CreditsSectionRoot
 import cmp.shared.SharedApp
 import io.github.vinceglb.filekit.FileKit
@@ -95,6 +96,9 @@ class MainActivity : AppCompatActivity() {
             var showArciCredit by remember {
                 mutableStateOf(openArciCreditOnLaunch)
             }
+            // Arci.Mobile#77 — global central assistant button is shown only inside the
+            // authenticated app; the navbar flips this via ArciEntryBridge.onAuthenticatedChanged.
+            var assistantAuthed by remember { mutableStateOf(false) }
 
             SharedApp(
                 modifier = Modifier.semantics { testTagsAsResourceId = true },
@@ -134,12 +138,20 @@ class MainActivity : AppCompatActivity() {
                             onExit = { showArciCredit = false },
                         )
                     }
+                    // Global central assistant button — visible on the authenticated app, hidden
+                    // while the embedded credit section (own in-flow assistant) is open. #77.
+                    AssistantLauncherOverlay(
+                        visible = assistantAuthed && !showArciCredit,
+                    )
                 },
             )
 
             // The "Loan Ipoteka" home service tile launches the Arci flow via the shared bridge.
             androidx.compose.runtime.LaunchedEffect(Unit) {
                 org.mifos.mobile.core.common.ArciEntryBridge.open = { showArciCredit = true }
+                org.mifos.mobile.core.common.ArciEntryBridge.onAuthenticatedChanged = { authed ->
+                    assistantAuthed = authed
+                }
             }
         }
     }
