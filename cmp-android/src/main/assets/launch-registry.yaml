@@ -31,11 +31,16 @@ launch_registry:
     appId: credit_lead_intake
     steps: [credit_lead_conditions_chat, credit_lead_chat]
     presentationHint: CHAT
+  # Arci.Mobile#65: mortgage is now the single-page storefront vitrina folded into
+  # credit_storefront (Arci.App.CreditStorefront #7), NOT the legacy standalone Mortgage app.
+  # The vitrina's terminalActionId=mortgage resolves to THIS key; appId credit_storefront routes
+  # the launcher to the storefront BFF (:9902) and opens interaction.cstf.mortgage_vitrina
+  # (carousel / issued / applications / programs). No saved-applications hub — the vitrina is a
+  # single page, not a resumable multi-step application. Mirrors dsl/registry/launch-registry.yaml.
   - key: mortgage
     labelKey: ui.launch.mortgage
-    appId: mortgage
-    steps: [interaction.mtg.mortgage_apply]
-    savedApplicationsEnabled: true
+    appId: credit_storefront
+    steps: [interaction.cstf.mortgage_vitrina]
     presentationHint: CLASSIC
   # Arci.Mobile#60 Thrust B — storefront LLM assistant (single-step CHAT), served by the
   # credit_storefront BFF; the vitrina step:route_assistant hands off to this key.
